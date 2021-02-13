@@ -94,39 +94,38 @@ class TreeFeaturizer(object):
                 optimal_credit_bins = json.load(f)
             dict_featurizer = DictVectorizer()
             tfidf_featurizer = TfidfVectorizer()
-            
             statement_transformer = FunctionTransformer(extract_statements)
             manual_feature_transformer = FunctionTransformer(partial(extract_manual_features,
                                                                      optimal_credit_bins=optimal_credit_bins))
-            
+
             manual_feature_pipeline = Pipeline([
                 ("manual_features", manual_feature_transformer),
                 ("manual_featurizer", dict_featurizer)
             ])
-            
+
             ngram_feature_pipeline = Pipeline([
                 ("statements", statement_transformer),
                 ("ngram_featurizer", tfidf_featurizer)
             ])
-            
+
             self.combined_featurizer = FeatureUnion([
                 ("manual_feature_pipe", manual_feature_pipeline),
                 ("ngram_feature_pipe", ngram_feature_pipeline)
             ])
-    
+
     def get_all_feature_names(self) -> List[str]:
         all_feature_names = []
         for name, pipeline in self.combined_featurizer.transformer_list:
             final_pipe_name, final_pipe_transformer = pipeline.steps[-1]
             all_feature_names.extend(final_pipe_transformer.get_feature_names())
         return all_feature_names
-    
+
     def fit(self, datapoints: List[Datapoint]) -> None:
         self.combined_featurizer.fit(datapoints)
-    
+
     def featurize(self, datapoints: List[Datapoint]) -> np.array:
         return self.combined_featurizer.transform(datapoints)
-    
+
     def save(self, featurizer_cache_path: str):
         LOGGER.info("Saving featurizer to disk...")
         with open(featurizer_cache_path, "wb") as f:
@@ -144,6 +143,8 @@ def normalize_labels(datapoints: List[Dict]) -> List[Dict]:
     normalized_datapoints = []
     for datapoint in datapoints:
         # First do simple cleaning
+        if datapoint["label"] == None:
+            continue
         normalized_datapoint = deepcopy(datapoint)
         normalized_datapoint["label"] = SIX_WAY_LABEL_TO_BINARY[datapoint["label".lower().strip()]]
         normalized_datapoints.append(normalized_datapoint)
@@ -156,6 +157,8 @@ def normalize_and_clean_speaker_title(datapoints: List[Dict]) -> List[Dict]:
         # First do simple cleaning
         normalized_datapoint = deepcopy(datapoint)
         old_speaker_title = normalized_datapoint["speaker_title"]
+        if old_speaker_title == None:
+            continue
         old_speaker_title = old_speaker_title.lower().strip().replace("-", " ")
         # Then canonicalize
         if old_speaker_title in CANONICAL_SPEAKER_TITLES:
@@ -180,6 +183,8 @@ def normalize_and_clean_state_info(datapoints: List[Dict]) -> List[Dict]:
     for datapoint in datapoints:
         normalized_datapoint = deepcopy(datapoint)
         old_state_info = normalized_datapoint["state_info"]
+        if old_state_info == None:
+            continue
         old_state_info = old_state_info.lower().strip().replace("-", " ")
         if old_state_info in CANONICAL_STATE:
             old_state_info = CANONICAL_STATE[old_state_info]
@@ -198,7 +203,10 @@ def normalize_and_clean_counts(datapoints: List[Dict]) -> List[Dict]:
                           "mostly_true_count",
                           "pants_fire_count"]:
             if count_col in normalized_datapoint:
-                normalized_datapoint[count_col] = float(normalized_datapoint[count_col])
+                if normalized_datapoint[count_col] != None:
+                    normalized_datapoint[count_col] = float(normalized_datapoint[count_col])
+                else:
+                    normalized_datapoint[count_col] = 0.0
         normalized_datapoints.append(normalized_datapoint)
     return normalized_datapoints
 
